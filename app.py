@@ -1,13 +1,13 @@
-from flask import Flask, request, jsonify
+ffrom flask import Flask, request, jsonify
+from flask_cors import CORS  # Importera CORS
 import sqlite3
 import os
 
 app = Flask(__name__)
+CORS(app)  # Aktivera CORS för hela appen
 
-# Databasens filnamn
 DB_NAME = "transactions.db"
 
-# Initialisera databasen
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
@@ -19,26 +19,20 @@ def init_db():
     conn.commit()
     conn.close()
 
-# Test-route för att se att servern fungerar
 @app.route('/test', methods=['GET'])
 def test_route():
     return jsonify({"message": "Test route is working!"})
 
-# Route för att lägga till transaktion
 @app.route('/add-transaction', methods=['POST'])
 def add_transaction():
     try:
         data = request.json
-        print(f"Received data: {data}")  # Debug-logg
-
-        # Hämta och validera fält från JSON
         description = data.get("description", "").strip()
         amount = data.get("amount", 0)
 
         if not description or amount <= 0:
             return jsonify({"error": "Invalid data provided"}), 400
 
-        # Föreslå BAS-konto baserat på beskrivning
         if "mat" in description.lower():
             suggested_account = "4010 - Matinköp"
         elif "hyra" in description.lower():
@@ -46,7 +40,6 @@ def add_transaction():
         else:
             suggested_account = "2999 - Övrigt"
 
-        # Spara transaktionen i databasen
         conn = sqlite3.connect(DB_NAME)
         c = conn.cursor()
         c.execute("INSERT INTO transactions (description, amount, suggested_account) VALUES (?, ?, ?)",
@@ -56,10 +49,8 @@ def add_transaction():
 
         return jsonify({"message": "Transaction added!", "suggested_account": suggested_account})
     except Exception as e:
-        print(f"Error processing request: {e}")  # Logga felet
-        return jsonify({"error": "Invalid request", "details": str(e)}), 400
+        return jsonify({"error": "Internal server error", "details": str(e)}), 500
 
-# Route för att hämta alla transaktioner
 @app.route('/transactions', methods=['GET'])
 def get_transactions():
     conn = sqlite3.connect(DB_NAME)
@@ -68,7 +59,6 @@ def get_transactions():
     transactions = c.fetchall()
     conn.close()
 
-    # Konvertera resultat till en lista av objekt
     transactions_list = [
         {
             "id": row[0],
@@ -81,8 +71,7 @@ def get_transactions():
 
     return jsonify({"transactions": transactions_list})
 
-# Starta servern
 if __name__ == '__main__':
     init_db()
-    port = int(os.environ.get('PORT', 5000))  # Använd Render-port eller standardport 5000
+    port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=True)
