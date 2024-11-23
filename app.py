@@ -1,10 +1,13 @@
 from flask import Flask, request, jsonify
 import sqlite3
+import os
 
 app = Flask(__name__)
 
+# Databasens filnamn
 DB_NAME = "transactions.db"
 
+# Initialisera databasen
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
@@ -16,32 +19,47 @@ def init_db():
     conn.commit()
     conn.close()
 
-@app.route('/')
-def home():
-    return "AI Accountant Backend is running!"
+# Test-route för att se att servern fungerar
+@app.route('/test', methods=['GET'])
+def test_route():
+    return jsonify({"message": "Test route is working!"})
 
+# Route för att lägga till transaktion
 @app.route('/add-transaction', methods=['POST'])
 def add_transaction():
-    data = request.json
-    description = data.get("description")
-    amount = data.get("amount")
+    try:
+        data = request.json
+        print(f"Received data: {data}")  # Debug-logg
 
-    if "mat" in description.lower():
-        suggested_account = "4010 - Matinköp"
-    elif "hyra" in description.lower():
-        suggested_account = "5010 - Lokalhyra"
-    else:
-        suggested_account = "2999 - Övrigt"
+        # Hämta och validera fält från JSON
+        description = data.get("description", "").strip()
+        amount = data.get("amount", 0)
 
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("INSERT INTO transactions (description, amount, suggested_account) VALUES (?, ?, ?)",
-              (description, amount, suggested_account))
-    conn.commit()
-    conn.close()
+        if not description or amount <= 0:
+            return jsonify({"error": "Invalid data provided"}), 400
 
-    return jsonify({"message": "Transaction added!", "suggested_account": suggested_account})
+        # Föreslå BAS-konto baserat på beskrivning
+        if "mat" in description.lower():
+            suggested_account = "4010 - Matinköp"
+        elif "hyra" in description.lower():
+            suggested_account = "5010 - Lokalhyra"
+        else:
+            suggested_account = "2999 - Övrigt"
 
+        # Spara transaktionen i databasen
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("INSERT INTO transactions (description, amount, suggested_account) VALUES (?, ?, ?)",
+                  (description, amount, suggested_account))
+        conn.commit()
+        conn.close()
+
+        return jsonify({"message": "Transaction added!", "suggested_account": suggested_account})
+    except Exception as e:
+        print(f"Error processing request: {e}")  # Logga felet
+        return jsonify({"error": "Invalid request", "details": str(e)}), 400
+
+# Route för att hämta alla transaktioner
 @app.route('/transactions', methods=['GET'])
 def get_transactions():
     conn = sqlite3.connect(DB_NAME)
@@ -50,9 +68,21 @@ def get_transactions():
     transactions = c.fetchall()
     conn.close()
 
-    return jsonify({"transactions": transactions})
+    # Konvertera resultat till en lista av objekt
+    transactions_list = [
+        {
+            "id": row[0],
+            "description": row[1],
+            "amount": row[2],
+            "suggested_account": row[3]
+        }
+        for row in transactions
+    ]
 
+    return jsonify({"transactions": transactions_list})
+
+# Starta servern
 if __name__ == '__main__':
     init_db()
-    app.run(host='0.0.0.0', port=5000, debug=True)
-
+    port = int(os.environ.get('PORT', 5000))  # Använd Render-port eller standardport 5000
+    app.run(host='0.0.0.0', port=port, debug=True)
